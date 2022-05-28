@@ -14,33 +14,31 @@ Event-loop
 '''
 import json
 import sys
+import os
 from time import time, sleep
 import pandas as pd
 from tools.tcp_server import TCPSocketServer
 
 
-CSV_HEADER = ['time', 'ax', 'ay', 'az', 'gx' 'gy', 'gz']
+CSV_HEADER = ['time', 'ax', 'ay', 'az', 'gx', 'gy', 'gz']
 
-PATH = sys.argv[0]
+PATH = r"D:\OneDrive - CADIAT\CadiAt\imu\test-records\20220311_0209\sensors"
 
 DATA_SERVER = TCPSocketServer(11232)
-DATA_SERVER.run_thread()
 
-df = pd.read_csv(PATH, names=CSV_HEADER)
-
+df = pd.read_csv(os.path.join(PATH, "acc_gyro.csv"), names=CSV_HEADER, index_col=False)
+index_last = df.shape[0] - 1
 
 
 def get_time_diffs(i):
     '''
     Returns time difference between given row and the next
     '''
-    global df
+    if i < index_last:
+        t_next = df['time'].loc[i+1]
+        return t_next - (df['time'].loc[i])
 
-    if i == (df.shape[i]-1):
-        return 0
-
-    t_next = df['time'].loc[i+1]
-    return t_next - (df['time'].loc[i])
+    return 0
 
 
 
@@ -48,19 +46,20 @@ def send_row(i, t0_clock):
     '''
     Given index of the row, sends IMU values through socket then sleeps.
     '''
+    global df, DATA_SERVER
+
     row = df.loc[i]
 
     t_clock = time() - t0_clock
     t_row = row['time']
+                                        # correct throttle drift
+    t_sleep = df['time_diff'].loc[i] - (t_clock - t_row)
 
-    t_sleep = df['time_dff'].loc[i]
 
     msg = {key: row[key] for key in ['ax', 'ay', 'az', 'gx', 'gy', 'gz']}
     DATA_SERVER.broadcast(json.dumps(msg))
 
     print(f"[MESSAGE SENT] - \n\tTIME_ROW\t:\t{t_row}\n\tTIME_NOW:\t{t_clock}\n\tSLEEPING:\t{t_sleep}\n")
-    print(msg)
-
     sleep(t_sleep)
 
 
@@ -68,12 +67,17 @@ def send_row(i, t0_clock):
 
 if __name__ == "__main__":
     # Normalize time, so start is 0
+
     t0_data = df['time'].loc[0]
     df['time'] = df['time'] - t0_data
 
     # Find time diffs between rows (sleep_t)
-    df['time_diff'] = df.apply(lambda x: get_time_diffs(x.name), row=1)
+    df['time_diff'] = df.apply(lambda x: get_time_diffs(x.name), axis=1)
+
+    DATA_SERVER.run_thread()
 
     print(f"[START] - Starting data playback..")
+
+    t0_clock = time()
     df.apply(lambda x: send_row(x.name, t0_clock), axis=1)
-    print(f"[END] - Data playback ended at time - {time.time()-t0_clock}")
+    print(f"[END] - Data playback ended at time - {time()-t0_clock}")
