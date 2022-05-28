@@ -52,14 +52,21 @@ def send_row(i, t0_clock):
 
     t_clock = time() - t0_clock
     t_row = row['time']
-                                        # correct throttle drift
-    t_sleep = df['time_diff'].loc[i] - (t_clock - t_row)
+
+    t_sleep_row = df['time_diff'].loc[i]
+    t_throttle = t_clock - t_row
+    # correct throttle drift
+    t_sleep = t_sleep_row - t_throttle
+
+    # prevent over correction
+    if (t_sleep < 0):
+        t_sleep = t_sleep_row
 
 
     msg = {key: row[key] for key in ['ax', 'ay', 'az', 'gx', 'gy', 'gz']}
     DATA_SERVER.broadcast(json.dumps(msg))
 
-    print(f"[MESSAGE SENT] - \n\tTIME_ROW\t:\t{t_row}\n\tTIME_NOW:\t{t_clock}\n\tSLEEPING:\t{t_sleep}\n")
+    print(f"[MESSAGE SENT] - \n\tTIME_ROW\t:\t{t_row}\n\tTIME_NOW\t:\t{t_clock}\n\tSLEEPING\t:\t{t_sleep}\n")
     sleep(t_sleep)
 
 
